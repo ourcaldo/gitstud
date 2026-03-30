@@ -1,0 +1,174 @@
+// Popup script for GitHub Education Helper
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const proxyToggle = document.getElementById('proxyToggle');
+    const spoofToggle = document.getElementById('spoofToggle');
+    const proxyStatus = document.getElementById('proxyStatus');
+    const spoofStatus = document.getElementById('spoofStatus');
+    const proxyInfo = document.getElementById('proxyInfo');
+    const spoofInfo = document.getElementById('spoofInfo');
+    const spoofDetails = document.getElementById('spoofDetails');
+    const generateAddressBtn = document.getElementById('generateAddress');
+    const addressStatus = document.getElementById('addressStatus');
+    const addressPreview = document.getElementById('addressPreview');
+    const addressDetails = document.getElementById('addressDetails');
+    const refreshProxyBtn = document.getElementById('refreshProxy');
+
+    // Load saved settings
+    const settings = await chrome.storage.local.get(['proxyEnabled', 'spoofEnabled', 'proxyData', 'spoofData', 'lastAddress']);
+    
+    proxyToggle.checked = settings.proxyEnabled || false;
+    spoofToggle.checked = settings.spoofEnabled || false;
+    
+    updateProxyUI(settings.proxyEnabled, settings.proxyData);
+    updateSpoofUI(settings.spoofEnabled, settings.spoofData);
+    
+    if (settings.lastAddress) {
+        showAddressPreview(settings.lastAddress);
+    }
+
+    // Proxy toggle handler
+    proxyToggle.addEventListener('change', async () => {
+        const enabled = proxyToggle.checked;
+        
+        if (enabled) {
+            proxyStatus.textContent = 'Connecting...';
+            proxyStatus.className = 'status';
+            
+            // Request proxy from background script
+            const response = await chrome.runtime.sendMessage({ action: 'enableProxy' });
+            
+            if (response.success) {
+                await chrome.storage.local.set({ proxyEnabled: true, proxyData: response.proxyData });
+                updateProxyUI(true, response.proxyData);
+            } else {
+                proxyToggle.checked = false;
+                proxyStatus.textContent = 'Error: ' + response.error;
+                proxyStatus.className = 'status error';
+            }
+        } else {
+            await chrome.runtime.sendMessage({ action: 'disableProxy' });
+            await chrome.storage.local.set({ proxyEnabled: false });
+            updateProxyUI(false, null);
+        }
+    });
+
+    // Spoofing toggle handler
+    spoofToggle.addEventListener('change', async () => {
+        const enabled = spoofToggle.checked;
+        
+        if (enabled) {
+            spoofStatus.textContent = 'Activating...';
+            spoofStatus.className = 'status';
+            
+            const response = await chrome.runtime.sendMessage({ action: 'enableSpoofing' });
+            
+            if (response.success) {
+                await chrome.storage.local.set({ spoofEnabled: true, spoofData: response.spoofData });
+                updateSpoofUI(true, response.spoofData);
+            } else {
+                spoofToggle.checked = false;
+                spoofStatus.textContent = 'Error: ' + response.error;
+                spoofStatus.className = 'status error';
+            }
+        } else {
+            await chrome.runtime.sendMessage({ action: 'disableSpoofing' });
+            await chrome.storage.local.set({ spoofEnabled: false });
+            updateSpoofUI(false, null);
+        }
+    });
+
+    // Generate address handler
+    generateAddressBtn.addEventListener('click', async () => {
+        generateAddressBtn.disabled = true;
+        addressStatus.textContent = 'Generating address...';
+        addressStatus.className = 'status';
+        
+        try {
+            const response = await chrome.runtime.sendMessage({ action: 'generateAddress' });
+            
+            if (response.success) {
+                await chrome.storage.local.set({ lastAddress: response.address });
+                showAddressPreview(response.address);
+                
+                // Send to content script to fill the form
+                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                if (tab) {
+                    await chrome.tabs.sendMessage(tab.id, { 
+                        action: 'fillAddress', 
+                        address: response.address 
+                    });
+                    addressStatus.textContent = '✅ Address filled!';
+                    addressStatus.className = 'status active';
+                }
+            } else {
+                addressStatus.textContent = 'Error: ' + response.error;
+                addressStatus.className = 'status error';
+            }
+        } catch (error) {
+            addressStatus.textContent = 'Error: ' + error.message;
+            addressStatus.className = 'status error';
+        }
+        
+        generateAddressBtn.disabled = false;
+    });
+
+    // Refresh proxy handler
+    refreshProxyBtn.addEventListener('click', async () => {
+        refreshProxyBtn.disabled = true;
+        proxyStatus.textContent = 'Refreshing proxy...';
+        
+        const response = await chrome.runtime.sendMessage({ action: 'refreshProxy' });
+        
+        if (response.success) {
+            await chrome.storage.local.set({ proxyData: response.proxyData });
+            updateProxyUI(proxyToggle.checked, response.proxyData);
+        } else {
+            proxyStatus.textContent = 'Error: ' + response.error;
+            proxyStatus.className = 'status error';
+        }
+        
+        refreshProxyBtn.disabled = false;
+    });
+
+    function updateProxyUI(enabled, proxyData) {
+        if (enabled && proxyData) {
+            proxyStatus.textContent = '✅ Connected';
+            proxyStatus.className = 'status active';
+            proxyInfo.style.display = 'block';
+            proxyInfo.textContent = `Proxy: ${proxyData.host}:${proxyData.port}`;
+        } else {
+            proxyStatus.textContent = 'Disabled';
+            proxyStatus.className = 'status';
+            proxyInfo.style.display = 'none';
+        }
+    }
+
+    function updateSpoofUI(enabled, spoofData) {
+        if (enabled && spoofData) {
+            spoofStatus.textContent = '✅ Active';
+            spoofStatus.className = 'status active';
+            spoofInfo.style.display = 'block';
+            spoofDetails.innerHTML = `
+                <strong>Timezone:</strong> ${spoofData.timezone}<br>
+                <strong>Language:</strong> ${spoofData.language}<br>
+                <strong>Location:</strong> ${spoofData.city}, ${spoofData.country}
+            `;
+        } else {
+            spoofStatus.textContent = 'Disabled';
+            spoofStatus.className = 'status';
+            spoofInfo.style.display = 'none';
+        }
+    }
+
+    function showAddressPreview(address) {
+        addressPreview.style.display = 'block';
+        addressDetails.innerHTML = `
+            <strong>Address:</strong> ${address.address_line}<br>
+            <strong>City:</strong> ${address.city}<br>
+            <strong>State:</strong> ${address.state_province}<br>
+            <strong>Postal:</strong> ${address.postal_code}<br>
+            <strong>Country:</strong> ${address.country}
+        `;
+    }
+});
