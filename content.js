@@ -89,6 +89,36 @@ function enableUpload() {
 
 // ==================== ADDRESS FILL FEATURE ====================
 
+function extractNameFromPage() {
+    // Get name from settings header: <h1 id="settings-header"><a>NAME (username)</a></h1>
+    const headerLink = document.querySelector('#settings-header a');
+    if (!headerLink) {
+        console.warn("Could not find settings header");
+        return null;
+    }
+    
+    // Get text content and clean it up
+    let fullText = headerLink.textContent.trim();
+    
+    // Remove the username part in parentheses, e.g., "(gitcoladev)"
+    fullText = fullText.replace(/\s*\([^)]+\)\s*/g, '').trim();
+    
+    // Split into words
+    const words = fullText.split(/\s+/).filter(w => w.length > 0);
+    
+    if (words.length === 0) {
+        return null;
+    }
+    
+    // First word is first name, rest is last name
+    const firstName = words[0];
+    const lastName = words.slice(1).join(' ') || '';
+    
+    console.log(`📛 Extracted name: "${firstName}" "${lastName}"`);
+    
+    return { firstName, lastName };
+}
+
 function fillBillingAddress(address) {
     console.log("📍 Filling billing address:", address);
 
@@ -117,6 +147,18 @@ function fillBillingAddress(address) {
         }
         console.warn(`Select not found: ${selector}`);
         return false;
+    }
+
+    // Extract and fill name from page
+    const name = extractNameFromPage();
+    if (name) {
+        // First Name
+        setInputValue('#billing_contact_first_name', name.firstName) ||
+        setInputValue('input[name="billing_contact[first_name]"]', name.firstName);
+        
+        // Last Name
+        setInputValue('#billing_contact_last_name', name.lastName) ||
+        setInputValue('input[name="billing_contact[last_name]"]', name.lastName);
     }
 
     // 1. Address line
