@@ -1,6 +1,6 @@
 // Background Service Worker for GitHub Education Helper
 
-const PROXY_API = "http://eclipseproxy.com/api/genProxy?proxy=eclipse_gitdevaldo-country-id-city-nganjuk-session-NIjX1u11-lifetime-30%3A11c11bdc-ef9e-4b82-b61c-df20cce291ac%3Acore.eclipseproxy.com%3A10000&format=h:pt:u:ps&amount=1";
+const PROXY_API = "https://eclipseproxy.com/api/genProxy?proxy=eclipse_gitdevaldo-country-id-city-nganjuk-session-NIjX1u11-lifetime-30%3A11c11bdc-ef9e-4b82-b61c-df20cce291ac%3Acore.eclipseproxy.com%3A10000&format=h:pt:u:ps&amount=1";
 const ADDRESS_API = "https://mocloc.com/api/v1/addresses/ID?count=1";
 
 // Indonesian location spoofing data (Nganjuk, East Java - matching proxy location)
@@ -33,9 +33,20 @@ function parseProxyResponse(response) {
 // Fetch new proxy from API
 async function fetchProxy() {
     try {
-        const response = await fetch(PROXY_API);
-        if (!response.ok) throw new Error('Proxy API request failed');
+        // Try HTTPS first, fallback to HTTP
+        let response;
+        try {
+            response = await fetch(PROXY_API);
+        } catch (e) {
+            // Fallback to HTTP if HTTPS fails
+            response = await fetch(PROXY_API.replace('https://', 'http://'));
+        }
+        
+        if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`);
+        }
         const text = await response.text();
+        console.log("📡 Proxy API response:", text);
         return parseProxyResponse(text);
     } catch (error) {
         console.error('Failed to fetch proxy:', error);
@@ -81,23 +92,33 @@ async function clearProxy() {
     });
 }
 
-// Handle proxy authentication
-chrome.webRequest?.onAuthRequired?.addListener(
-    (details, callback) => {
+// Handle proxy authentication (MV3 compatible)
+chrome.webRequest.onAuthRequired.addListener(
+    (details) => {
         if (currentProxyData && details.isProxy) {
-            callback({
+            console.log("🔐 Providing proxy credentials for:", details.challenger?.host);
+            return {
                 authCredentials: {
                     username: currentProxyData.username,
                     password: currentProxyData.password
                 }
-            });
-        } else {
-            callback({ cancel: false });
+            };
         }
+        return {};
     },
     { urls: ["<all_urls>"] },
-    ["asyncBlocking"]
+    ["blocking"]
 );
+
+// Also restore proxy credentials from storage on startup
+chrome.storage.local.get(['proxyEnabled', 'proxyData']).then((settings) => {
+    if (settings.proxyEnabled && settings.proxyData) {
+        currentProxyData = settings.proxyData;
+        setProxy(settings.proxyData).then(() => {
+            console.log("🌐 Proxy restored from storage");
+        }).catch(console.error);
+    }
+});
 
 // Inject spoofing script into tabs
 async function injectSpoofingScript(tabId) {
