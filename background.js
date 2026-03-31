@@ -111,12 +111,32 @@ chrome.webRequest.onAuthRequired.addListener(
 );
 
 // Also restore proxy credentials from storage on startup
-chrome.storage.local.get(['proxyEnabled', 'proxyData']).then((settings) => {
-    if (settings.proxyEnabled && settings.proxyData) {
-        currentProxyData = settings.proxyData;
-        setProxy(settings.proxyData).then(() => {
-            console.log("🌐 Proxy restored from storage");
-        }).catch(console.error);
+chrome.storage.local.get(['proxyEnabled', 'proxyData', 'spoofEnabled']).then(async (settings) => {
+    // Enable proxy if it was enabled or if this is first run (default on)
+    if (settings.proxyEnabled !== false) {
+        if (settings.proxyData) {
+            currentProxyData = settings.proxyData;
+            setProxy(settings.proxyData).then(() => {
+                console.log("🌐 Proxy restored from storage");
+            }).catch(console.error);
+        } else {
+            // First run without data, fetch and enable
+            try {
+                const proxyData = await fetchProxy();
+                await setProxy(proxyData);
+                currentProxyData = proxyData;
+                await chrome.storage.local.set({ proxyEnabled: true, proxyData: proxyData });
+                console.log("🌐 Proxy enabled on startup");
+            } catch (error) {
+                console.error("Failed to enable proxy on startup:", error);
+            }
+        }
+    }
+    
+    // Enable spoofing by default if not explicitly disabled
+    if (settings.spoofEnabled !== false) {
+        await chrome.storage.local.set({ spoofEnabled: true, spoofData: SPOOF_DATA });
+        console.log("🕵️ Spoofing enabled on startup");
     }
 });
 
@@ -411,7 +431,31 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     }
 });
 
-// Initialize on install
-chrome.runtime.onInstalled.addListener(() => {
+// Initialize on install - enable proxy and spoofing by default
+chrome.runtime.onInstalled.addListener(async (details) => {
     console.log('GitHub Education Helper installed');
+    
+    if (details.reason === 'install') {
+        // Enable proxy by default
+        try {
+            const proxyData = await fetchProxy();
+            await setProxy(proxyData);
+            currentProxyData = proxyData;
+            await chrome.storage.local.set({ 
+                proxyEnabled: true, 
+                proxyData: proxyData,
+                spoofEnabled: true,
+                spoofData: SPOOF_DATA
+            });
+            console.log('✅ Proxy enabled by default');
+            console.log('✅ Spoofing enabled by default');
+        } catch (error) {
+            console.error('Failed to enable proxy on install:', error);
+            // Still enable spoofing even if proxy fails
+            await chrome.storage.local.set({ 
+                spoofEnabled: true,
+                spoofData: SPOOF_DATA
+            });
+        }
+    }
 });
