@@ -54,17 +54,24 @@ async function fetchProxy() {
     }
 }
 
-// Configure Chrome proxy settings
+// Configure Chrome proxy settings with PAC script for domain-specific routing
 async function setProxy(proxyData) {
+    // PAC script: only route *.github.com through proxy, everything else direct
+    const pacScript = `
+        function FindProxyForURL(url, host) {
+            // Only proxy GitHub domains
+            if (shExpMatch(host, "*.github.com") || shExpMatch(host, "github.com")) {
+                return "PROXY ${proxyData.host}:${proxyData.port}";
+            }
+            // Everything else goes direct
+            return "DIRECT";
+        }
+    `;
+
     const config = {
-        mode: "fixed_servers",
-        rules: {
-            singleProxy: {
-                scheme: "http",
-                host: proxyData.host,
-                port: proxyData.port
-            },
-            bypassList: ["localhost", "127.0.0.1"]
+        mode: "pac_script",
+        pacScript: {
+            data: pacScript
         }
     };
 
@@ -73,6 +80,7 @@ async function setProxy(proxyData) {
             if (chrome.runtime.lastError) {
                 reject(chrome.runtime.lastError);
             } else {
+                console.log("🌐 Proxy configured for *.github.com only");
                 resolve();
             }
         });
