@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GitHub Education Upload Enabler",
-  "version": "2.0",
+  "version": "2.5",
   "description": "Forces file upload option on GitHub Education benefits page with proxy and spoofing support.",
   "permissions": [
     "activeTab",
