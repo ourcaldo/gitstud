@@ -44,30 +44,46 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (response.success) {
                 const settings = await chrome.storage.local.get(['proxyEnabled']);
                 const isProxied = settings.proxyEnabled;
+                const hasGeoData = response.countryCode && response.city;
                 const isIndonesia = response.countryCode === 'ID';
                 const isProtected = isProxied && isIndonesia;
 
-                ipFlag.textContent = COUNTRY_FLAGS[response.countryCode] || '🏳️';
+                ipFlag.textContent = hasGeoData ? (COUNTRY_FLAGS[response.countryCode] || '🏳️') : '🌐';
                 ipAddress.textContent = response.ip;
-                ipLocation.textContent = `${response.city}, ${response.country}`;
+                ipLocation.textContent = hasGeoData
+                    ? `${response.city}, ${response.country}`
+                    : (isProxied ? 'Proxied — geo lookup unavailable' : 'Direct connection');
 
                 ipBadge.style.display = 'flex';
                 if (isProtected) {
                     ipBanner.className = 'ip-banner protected';
                     ipBadge.className = 'ip-badge protected';
                     ipBadge.textContent = '🛡️ PROTECTED';
-                } else if (isProxied && !isIndonesia) {
+                } else if (isProxied && hasGeoData && !isIndonesia) {
                     ipBanner.className = 'ip-banner unprotected';
                     ipBadge.className = 'ip-badge unprotected';
-                    ipBadge.textContent = '⚠️ PROXY ERROR';
+                    ipBadge.textContent = '⚠️ WRONG REGION';
+                } else if (isProxied && !hasGeoData) {
+                    ipBanner.className = 'ip-banner protected';
+                    ipBadge.className = 'ip-badge protected';
+                    ipBadge.textContent = '🔄 PROXIED';
                 } else {
                     ipBanner.className = 'ip-banner unprotected';
                     ipBadge.className = 'ip-badge unprotected';
                     ipBadge.textContent = '⚠️ EXPOSED';
                 }
             } else {
-                ipAddress.textContent = 'Failed to check IP';
-                ipBanner.className = 'ip-banner checking';
+                const settings = await chrome.storage.local.get(['proxyEnabled']);
+                if (settings.proxyEnabled) {
+                    ipAddress.textContent = 'IP check blocked — proxy may be down';
+                    ipBanner.className = 'ip-banner unprotected';
+                    ipBadge.style.display = 'flex';
+                    ipBadge.className = 'ip-badge unprotected';
+                    ipBadge.textContent = '⚠️ UNREACHABLE';
+                } else {
+                    ipAddress.textContent = 'Failed to check IP';
+                    ipBanner.className = 'ip-banner checking';
+                }
             }
         } catch (error) {
             ipRefreshBtn.classList.remove('spinning');
@@ -247,12 +263,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function updateProxyUI(enabled, proxyData) {
         if (enabled && proxyData) {
-            proxyStatus.textContent = '✅ Connected';
+            proxyStatus.textContent = '🔧 Configured — check IP banner to verify';
             proxyStatus.className = 'status active';
             proxyInfo.style.display = 'block';
-            proxyInfo.textContent = `Proxy: ${proxyData.host}:${proxyData.port}`;
+            proxyInfo.textContent = `Routing via ${proxyData.host}:${proxyData.port}`;
         } else {
-            proxyStatus.textContent = 'Disabled';
+            proxyStatus.textContent = 'Off — your real IP is visible to GitHub';
             proxyStatus.className = 'status';
             proxyInfo.style.display = 'none';
         }
@@ -260,16 +276,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function updateSpoofUI(enabled, spoofData) {
         if (enabled && spoofData) {
-            spoofStatus.textContent = '✅ Active';
+            spoofStatus.textContent = '🔧 Injected — refresh GitHub tabs to apply';
             spoofStatus.className = 'status active';
             spoofInfo.style.display = 'block';
             spoofDetails.innerHTML = `
                 <strong>Timezone:</strong> ${spoofData.timezone}<br>
                 <strong>Language:</strong> ${spoofData.language}<br>
+                <strong>GPS:</strong> ${spoofData.latitude}, ${spoofData.longitude}<br>
                 <strong>Location:</strong> ${spoofData.city}, ${spoofData.country}
             `;
         } else {
-            spoofStatus.textContent = 'Disabled';
+            spoofStatus.textContent = 'Off — real timezone/GPS/language exposed';
             spoofStatus.className = 'status';
             spoofInfo.style.display = 'none';
         }

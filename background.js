@@ -1,7 +1,44 @@
 // Background Service Worker for GitHub Education Helper
 
 const ADDRESS_API = "https://mocloc.com/api/v1/addresses/ID?count=1";
-const IP_CHECK_API = "https://ipapi.co/json/";
+const IP_CHECK_APIS = [
+    {
+        url: "http://ip-api.com/json/?fields=query,country,countryCode,city,regionName,timezone,isp",
+        parse: (data) => ({
+            ip: data.query,
+            country: data.country,
+            countryCode: data.countryCode,
+            city: data.city,
+            region: data.regionName,
+            timezone: data.timezone,
+            org: data.isp
+        })
+    },
+    {
+        url: "https://ipapi.co/json/",
+        parse: (data) => ({
+            ip: data.ip,
+            country: data.country_name,
+            countryCode: data.country_code,
+            city: data.city,
+            region: data.region,
+            timezone: data.timezone,
+            org: data.org
+        })
+    },
+    {
+        url: "https://api.ipify.org?format=json",
+        parse: (data) => ({
+            ip: data.ip,
+            country: null,
+            countryCode: null,
+            city: null,
+            region: null,
+            timezone: null,
+            org: null
+        })
+    }
+];
 const PROXY_PASSWORD = "11c11bdc-ef9e-4b82-b61c-df20cce291ac";
 
 const CITY_CONFIG = {
@@ -111,7 +148,7 @@ async function setProxy(proxyData) {
             if (shExpMatch(host, "*.github.com") || shExpMatch(host, "github.com")) {
                 return "PROXY ${proxyData.host}:${proxyData.port}";
             }
-            if (shExpMatch(host, "ipapi.co")) {
+            if (shExpMatch(host, "ipapi.co") || shExpMatch(host, "ip-api.com") || shExpMatch(host, "api.ipify.org")) {
                 return "PROXY ${proxyData.host}:${proxyData.port}";
             }
             return "DIRECT";
@@ -514,21 +551,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
 
                 case 'checkIP': {
-                    try {
-                        const response = await fetch(IP_CHECK_API);
-                        const data = await response.json();
-                        sendResponse({
-                            success: true,
-                            ip: data.ip,
-                            country: data.country_name,
-                            countryCode: data.country_code,
-                            city: data.city,
-                            region: data.region,
-                            org: data.org,
-                            timezone: data.timezone
-                        });
-                    } catch (error) {
-                        sendResponse({ success: false, error: error.message });
+                    let lastError = null;
+                    for (const api of IP_CHECK_APIS) {
+                        try {
+                            const controller = new AbortController();
+                            const timeout = setTimeout(() => controller.abort(), 8000);
+                            const response = await fetch(api.url, { signal: controller.signal });
+                            clearTimeout(timeout);
+                            if (!response.ok) continue;
+                            const data = await response.json();
+                            const parsed = api.parse(data);
+                            sendResponse({ success: true, ...parsed });
+                            lastError = null;
+                            break;
+                        } catch (error) {
+                            lastError = error;
+                            continue;
+                        }
+                    }
+                    if (lastError) {
+                        sendResponse({ success: false, error: 'All IP check services failed. Proxy may be blocking requests or offline.' });
                     }
                     break;
                 }
