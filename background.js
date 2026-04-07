@@ -42,6 +42,19 @@ const IP_CHECK_APIS = [
 const PROXY_PASSWORD = "11c11bdc-ef9e-4b82-b61c-df20cce291ac";
 
 const CITY_CONFIG = {
+    random: {
+        label: "Random (Indonesia)",
+        latitude: -6.2088,
+        longitude: 106.8456,
+        defaultSession: "rNdM0x01",
+        noCity: true
+    },
+    jakarta: {
+        label: "Jakarta",
+        latitude: -6.2088,
+        longitude: 106.8456,
+        defaultSession: "jKt0rA01"
+    },
     kediri: {
         label: "Kediri",
         latitude: -7.8177,
@@ -75,15 +88,22 @@ const CITY_CONFIG = {
 };
 
 function buildProxyApiUrl(city) {
+    const config = CITY_CONFIG[city] || CITY_CONFIG.kediri;
+    if (config.noCity) {
+        return `http://eclipseproxy.com/api/genProxy?proxy=eclipse_gitdevaldo-country-id-session-wiSE63Mj-lifetime-30%3A${PROXY_PASSWORD}%3Acore.eclipseproxy.com%3A10000&format=h:pt:u:ps&amount=1`;
+    }
     return `http://eclipseproxy.com/api/genProxy?proxy=eclipse_gitdevaldo-country-id-city-${city}-session-wiSE63Mj-lifetime-30%3A${PROXY_PASSWORD}%3Acore.eclipseproxy.com%3A10000&format=h:pt:u:ps&amount=1`;
 }
 
 function buildDefaultProxy(city) {
     const config = CITY_CONFIG[city] || CITY_CONFIG.kediri;
+    const username = config.noCity
+        ? `eclipse_gitdevaldo-country-id-session-${config.defaultSession}-lifetime-30`
+        : `eclipse_gitdevaldo-country-id-city-${city}-session-${config.defaultSession}-lifetime-30`;
     return {
         host: "core.eclipseproxy.com",
         port: 10000,
-        username: `eclipse_gitdevaldo-country-id-city-${city}-session-${config.defaultSession}-lifetime-30`,
+        username: username,
         password: PROXY_PASSWORD
     };
 }

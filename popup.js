@@ -146,6 +146,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function updateCityStatus(city) {
         const labels = {
+            random: 'Random city in Indonesia',
+            jakarta: 'Jakarta, DKI Jakarta',
             kediri: 'Kediri, East Java',
             nganjuk: 'Nganjuk, East Java',
             ponorogo: 'Ponorogo, East Java',
