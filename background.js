@@ -44,8 +44,9 @@ const PROXY_PASSWORD = "11c11bdc-ef9e-4b82-b61c-df20cce291ac";
 const CITY_CONFIG = {
     random: {
         label: "Random (Indonesia)",
-        latitude: -6.2088,
-        longitude: 106.8456,
+        latitude: -7.6039,
+        longitude: 111.9030,
+        spoofCity: "Nganjuk",
         noCity: true
     },
     jakarta: {
@@ -96,7 +97,7 @@ function buildSpoofData(city) {
         languages: ["id-ID", "id", "en-US", "en"],
         latitude: config.latitude,
         longitude: config.longitude,
-        city: config.label,
+        city: config.spoofCity || config.label,
         country: "Indonesia"
     };
 }
@@ -244,8 +245,9 @@ async function injectSpoofingScript(tabId) {
     const spoofData = buildSpoofData(currentCity);
     const spoofScript = `
         (function() {
-            if (window.__spoofingInjected) return;
-            window.__spoofingInjected = true;
+            const spoofKey = '${spoofData.city}_${spoofData.latitude}_${spoofData.longitude}';
+            if (window.__spoofingKey === spoofKey) return;
+            window.__spoofingKey = spoofKey;
 
             const spoofData = ${JSON.stringify(spoofData)};
             const targetOffset = -420; // UTC+7 in minutes
@@ -421,8 +423,12 @@ async function injectSpoofingScript(tabId) {
     `;
 
     try {
+        const tab = await chrome.tabs.get(tabId).catch(() => null);
+        if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('about:')) {
+            return;
+        }
         await chrome.scripting.executeScript({
-            target: { tabId: tabId },
+            target: { tabId: tabId, allFrames: false },
             func: (script) => {
                 const scriptEl = document.createElement('script');
                 scriptEl.textContent = script;
@@ -434,7 +440,9 @@ async function injectSpoofingScript(tabId) {
             injectImmediately: true
         });
     } catch (error) {
-        console.error('Failed to inject spoofing script:', error);
+        if (!error.message?.includes('error page') && !error.message?.includes('Cannot access')) {
+            console.warn('Spoofing injection skipped for tab ' + tabId + ':', error.message);
+        }
     }
 }
 
@@ -489,9 +497,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     const spoofData = buildSpoofData(currentCity);
                     await chrome.storage.local.set({ spoofEnabled: true, spoofData: spoofData });
 
-                    const tabs = await chrome.tabs.query({ url: 'https://github.com/*' });
+                    const tabs = await chrome.tabs.query({});
                     for (const tab of tabs) {
-                        await injectSpoofingScript(tab.id);
+                        if (tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
+                            await injectSpoofingScript(tab.id);
+                        }
                     }
 
                     sendResponse({ success: true, spoofData: spoofData });
@@ -524,9 +534,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     }
 
                     if (settings.spoofEnabled) {
-                        const ghTabs = await chrome.tabs.query({ url: 'https://github.com/*' });
-                        for (const tab of ghTabs) {
-                            await injectSpoofingScript(tab.id);
+                        const allTabs = await chrome.tabs.query({});
+                        for (const tab of allTabs) {
+                            if (tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
+                                await injectSpoofingScript(tab.id);
+                            }
                         }
                     }
 
@@ -593,7 +605,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Inject spoofing on tab navigation if enabled
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'loading' && tab.url?.startsWith('https://github.com/')) {
+    if (changeInfo.status === 'complete' && tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
         const settings = await chrome.storage.local.get(['spoofEnabled']);
         if (settings.spoofEnabled) {
             await injectSpoofingScript(tabId);
