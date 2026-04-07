@@ -20,6 +20,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const addressPreview = document.getElementById('addressPreview');
     const addressDetails = document.getElementById('addressDetails');
     const refreshProxyBtn = document.getElementById('refreshProxy');
+    const citySelect = document.getElementById('citySelect');
+    const cityStatus = document.getElementById('cityStatus');
     const ipBanner = document.getElementById('ipBanner');
     const ipFlag = document.getElementById('ipFlag');
     const ipAddress = document.getElementById('ipAddress');
@@ -77,16 +79,64 @@ document.addEventListener('DOMContentLoaded', async () => {
     ipRefreshBtn.addEventListener('click', checkIP);
     checkIP();
 
-    const settings = await chrome.storage.local.get(['proxyEnabled', 'spoofEnabled', 'proxyData', 'spoofData', 'lastAddress']);
+    const settings = await chrome.storage.local.get(['proxyEnabled', 'spoofEnabled', 'proxyData', 'spoofData', 'lastAddress', 'selectedCity']);
     
     proxyToggle.checked = settings.proxyEnabled || false;
     spoofToggle.checked = settings.spoofEnabled || false;
     
+    if (settings.selectedCity) {
+        citySelect.value = settings.selectedCity;
+    }
+    updateCityStatus(settings.selectedCity || 'kediri');
+
     updateProxyUI(settings.proxyEnabled, settings.proxyData);
     updateSpoofUI(settings.spoofEnabled, settings.spoofData);
     
     if (settings.lastAddress) {
         showAddressPreview(settings.lastAddress);
+    }
+
+    citySelect.addEventListener('change', async () => {
+        const newCity = citySelect.value;
+        citySelect.disabled = true;
+        cityStatus.textContent = 'Switching to ' + citySelect.options[citySelect.selectedIndex].text + '...';
+        cityStatus.className = 'status';
+
+        try {
+            const response = await chrome.runtime.sendMessage({ action: 'changeCity', city: newCity });
+
+            if (response.success) {
+                updateCityStatus(newCity);
+                if (response.proxyData) {
+                    updateProxyUI(true, response.proxyData);
+                }
+                if (response.spoofData) {
+                    updateSpoofUI(true, response.spoofData);
+                }
+                cityStatus.textContent = response.cityLabel + ' — Active';
+                cityStatus.className = 'status active';
+                setTimeout(checkIP, 1000);
+            } else {
+                cityStatus.textContent = 'Error: ' + response.error;
+                cityStatus.className = 'status error';
+            }
+        } catch (error) {
+            cityStatus.textContent = 'Error: ' + error.message;
+            cityStatus.className = 'status error';
+        }
+
+        citySelect.disabled = false;
+    });
+
+    function updateCityStatus(city) {
+        const labels = {
+            kediri: 'Kediri, East Java',
+            nganjuk: 'Nganjuk, East Java',
+            ponorogo: 'Ponorogo, East Java',
+            probolinggo: 'Probolinggo, East Java',
+            madiun: 'Madiun, East Java'
+        };
+        cityStatus.textContent = labels[city] || city;
     }
 
     // Proxy toggle handler

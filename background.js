@@ -1,26 +1,70 @@
 // Background Service Worker for GitHub Education Helper
 
-const PROXY_API = "http://eclipseproxy.com/api/genProxy?proxy=eclipse_gitdevaldo-country-id-city-kediri-session-wiSE63Mj-lifetime-30%3A11c11bdc-ef9e-4b82-b61c-df20cce291ac%3Acore.eclipseproxy.com%3A10000&format=h:pt:u:ps&amount=1";
 const ADDRESS_API = "https://mocloc.com/api/v1/addresses/ID?count=1";
 const IP_CHECK_API = "https://ipapi.co/json/";
+const PROXY_PASSWORD = "11c11bdc-ef9e-4b82-b61c-df20cce291ac";
 
-const DEFAULT_PROXY = {
-    host: "core.eclipseproxy.com",
-    port: 10000,
-    username: "eclipse_gitdevaldo-country-id-city-kediri-session-iJhB7xfP-lifetime-30",
-    password: "11c11bdc-ef9e-4b82-b61c-df20cce291ac"
+const CITY_CONFIG = {
+    kediri: {
+        label: "Kediri",
+        latitude: -7.8177,
+        longitude: 112.0174,
+        defaultSession: "iJhB7xfP"
+    },
+    nganjuk: {
+        label: "Nganjuk",
+        latitude: -7.6039,
+        longitude: 111.9030,
+        defaultSession: "NIjX1u11"
+    },
+    ponorogo: {
+        label: "Ponorogo",
+        latitude: -7.8653,
+        longitude: 111.4600,
+        defaultSession: "pN0r0g01"
+    },
+    probolinggo: {
+        label: "Probolinggo",
+        latitude: -7.7543,
+        longitude: 113.2159,
+        defaultSession: "pR0b1ng0"
+    },
+    madiun: {
+        label: "Madiun",
+        latitude: -7.6298,
+        longitude: 111.5239,
+        defaultSession: "mAd1uN01"
+    }
 };
 
-const SPOOF_DATA = {
-    timezone: "Asia/Jakarta",
-    language: "id-ID",
-    languages: ["id-ID", "id", "en-US", "en"],
-    latitude: -7.8177,
-    longitude: 112.0174,
-    city: "Kediri",
-    country: "Indonesia"
-};
+function buildProxyApiUrl(city) {
+    return `http://eclipseproxy.com/api/genProxy?proxy=eclipse_gitdevaldo-country-id-city-${city}-session-wiSE63Mj-lifetime-30%3A${PROXY_PASSWORD}%3Acore.eclipseproxy.com%3A10000&format=h:pt:u:ps&amount=1`;
+}
 
+function buildDefaultProxy(city) {
+    const config = CITY_CONFIG[city] || CITY_CONFIG.kediri;
+    return {
+        host: "core.eclipseproxy.com",
+        port: 10000,
+        username: `eclipse_gitdevaldo-country-id-city-${city}-session-${config.defaultSession}-lifetime-30`,
+        password: PROXY_PASSWORD
+    };
+}
+
+function buildSpoofData(city) {
+    const config = CITY_CONFIG[city] || CITY_CONFIG.kediri;
+    return {
+        timezone: "Asia/Jakarta",
+        language: "id-ID",
+        languages: ["id-ID", "id", "en-US", "en"],
+        latitude: config.latitude,
+        longitude: config.longitude,
+        city: config.label,
+        country: "Indonesia"
+    };
+}
+
+let currentCity = "kediri";
 let currentProxyData = null;
 
 // Parse proxy response: "host:port:username:password"
@@ -38,15 +82,14 @@ function parseProxyResponse(response) {
 }
 
 // Fetch new proxy from API
-async function fetchProxy() {
+async function fetchProxy(city) {
+    city = city || currentCity;
     try {
-        // Try HTTPS first, fallback to HTTP
         let response;
         try {
-            response = await fetch(PROXY_API);
+            response = await fetch(buildProxyApiUrl(city));
         } catch (e) {
-            // Fallback to HTTP if HTTPS fails
-            response = await fetch(PROXY_API.replace('https://', 'http://'));
+            response = await fetch(buildProxyApiUrl(city));
         }
         
         if (!response.ok) {
@@ -126,34 +169,37 @@ chrome.webRequest.onAuthRequired.addListener(
 );
 
 // Also restore proxy credentials from storage on startup
-chrome.storage.local.get(['proxyEnabled', 'proxyData', 'spoofEnabled']).then(async (settings) => {
+chrome.storage.local.get(['proxyEnabled', 'proxyData', 'spoofEnabled', 'selectedCity']).then(async (settings) => {
+    currentCity = settings.selectedCity || "kediri";
+    const spoofData = buildSpoofData(currentCity);
+
     if (settings.proxyEnabled !== false) {
-        const proxyData = settings.proxyData || DEFAULT_PROXY;
+        const proxyData = settings.proxyData || buildDefaultProxy(currentCity);
         currentProxyData = proxyData;
         try {
             await setProxy(proxyData);
             await chrome.storage.local.set({ proxyEnabled: true, proxyData: proxyData });
-            console.log("🌐 Proxy restored/enabled on startup");
+            console.log("🌐 Proxy restored/enabled on startup (" + currentCity + ")");
         } catch (error) {
             console.error("Failed to enable proxy on startup:", error);
         }
     }
-    
-    // Enable spoofing by default if not explicitly disabled
+
     if (settings.spoofEnabled !== false) {
-        await chrome.storage.local.set({ spoofEnabled: true, spoofData: SPOOF_DATA });
-        console.log("🕵️ Spoofing enabled on startup");
+        await chrome.storage.local.set({ spoofEnabled: true, spoofData: spoofData });
+        console.log("🕵️ Spoofing enabled on startup (" + currentCity + ")");
     }
 });
 
 // Inject spoofing script into tabs
 async function injectSpoofingScript(tabId) {
+    const spoofData = buildSpoofData(currentCity);
     const spoofScript = `
         (function() {
             if (window.__spoofingInjected) return;
             window.__spoofingInjected = true;
 
-            const spoofData = ${JSON.stringify(SPOOF_DATA)};
+            const spoofData = ${JSON.stringify(spoofData)};
             const targetOffset = -420; // UTC+7 in minutes
 
             // ==================== NATIVE FUNCTION MASKING ====================
@@ -366,7 +412,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         try {
             switch (message.action) {
                 case 'enableProxy': {
-                    const proxyData = DEFAULT_PROXY;
+                    const proxyData = buildDefaultProxy(currentCity);
                     await setProxy(proxyData);
                     currentProxyData = proxyData;
                     sendResponse({ success: true, proxyData });
@@ -391,22 +437,73 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
 
                 case 'enableSpoofing': {
-                    // Store spoofing state
-                    await chrome.storage.local.set({ spoofEnabled: true, spoofData: SPOOF_DATA });
-                    
-                    // Inject into all matching tabs
+                    const spoofData = buildSpoofData(currentCity);
+                    await chrome.storage.local.set({ spoofEnabled: true, spoofData: spoofData });
+
                     const tabs = await chrome.tabs.query({ url: 'https://github.com/*' });
                     for (const tab of tabs) {
                         await injectSpoofingScript(tab.id);
                     }
-                    
-                    sendResponse({ success: true, spoofData: SPOOF_DATA });
+
+                    sendResponse({ success: true, spoofData: spoofData });
                     break;
                 }
 
                 case 'disableSpoofing': {
                     await chrome.storage.local.set({ spoofEnabled: false });
                     sendResponse({ success: true });
+                    break;
+                }
+
+                case 'changeCity': {
+                    const newCity = message.city;
+                    if (!CITY_CONFIG[newCity]) {
+                        sendResponse({ success: false, error: 'Unknown city: ' + newCity });
+                        break;
+                    }
+                    currentCity = newCity;
+                    const spoofData = buildSpoofData(newCity);
+                    await chrome.storage.local.set({ selectedCity: newCity, spoofData: spoofData });
+
+                    const settings = await chrome.storage.local.get(['proxyEnabled', 'spoofEnabled']);
+
+                    if (settings.proxyEnabled) {
+                        try {
+                            const proxyData = await fetchProxy(newCity);
+                            await setProxy(proxyData);
+                            currentProxyData = proxyData;
+                            await chrome.storage.local.set({ proxyData: proxyData });
+                        } catch (error) {
+                            const proxyData = buildDefaultProxy(newCity);
+                            await setProxy(proxyData);
+                            currentProxyData = proxyData;
+                            await chrome.storage.local.set({ proxyData: proxyData });
+                        }
+                    }
+
+                    if (settings.spoofEnabled) {
+                        const ghTabs = await chrome.tabs.query({ url: 'https://github.com/*' });
+                        for (const tab of ghTabs) {
+                            await injectSpoofingScript(tab.id);
+                        }
+                    }
+
+                    sendResponse({
+                        success: true,
+                        city: newCity,
+                        cityLabel: CITY_CONFIG[newCity].label,
+                        spoofData: spoofData,
+                        proxyData: currentProxyData
+                    });
+                    break;
+                }
+
+                case 'getCities': {
+                    const cities = Object.entries(CITY_CONFIG).map(([key, val]) => ({
+                        value: key,
+                        label: val.label
+                    }));
+                    sendResponse({ success: true, cities: cities, currentCity: currentCity });
                     break;
                 }
 
@@ -462,14 +559,18 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     console.log('GitHub Education Helper installed');
     
     if (details.reason === 'install') {
+        currentCity = "kediri";
+        const defaultProxy = buildDefaultProxy(currentCity);
+        const spoofData = buildSpoofData(currentCity);
         try {
-            await setProxy(DEFAULT_PROXY);
-            currentProxyData = DEFAULT_PROXY;
+            await setProxy(defaultProxy);
+            currentProxyData = defaultProxy;
             await chrome.storage.local.set({ 
                 proxyEnabled: true, 
-                proxyData: DEFAULT_PROXY,
+                proxyData: defaultProxy,
                 spoofEnabled: true,
-                spoofData: SPOOF_DATA
+                spoofData: spoofData,
+                selectedCity: currentCity
             });
             console.log('✅ Proxy enabled by default (Kediri)');
             console.log('✅ Spoofing enabled by default');
@@ -477,7 +578,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
             console.error('Failed to enable proxy on install:', error);
             await chrome.storage.local.set({ 
                 spoofEnabled: true,
-                spoofData: SPOOF_DATA
+                spoofData: spoofData,
+                selectedCity: currentCity
             });
         }
     }

@@ -132,6 +132,25 @@
       color: #57606a;
       margin-top: 6px;
     }
+    .city-select {
+      padding: 4px 8px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      background: #fff;
+      color: #24292f;
+      cursor: pointer;
+      outline: none;
+    }
+    .city-select:focus {
+      border-color: #2ea44f;
+      box-shadow: 0 0 0 2px rgba(46, 164, 79, 0.2);
+    }
+    .city-select:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
     .ip-banner {
       display: flex;
       align-items: center;
@@ -228,6 +247,21 @@
     </div>
     <span id="ipBadge" class="ip-badge" style="display:none;"></span>
     <button class="ip-refresh-btn" id="ipRefreshBtn" title="Refresh IP">🔄</button>
+  </div>
+
+  <!-- City Selector -->
+  <div class="section">
+    <div class="toggle-row">
+      <span class="toggle-label">📍 Proxy City</span>
+      <select id="citySelect" class="city-select">
+        <option value="kediri">Kediri</option>
+        <option value="nganjuk">Nganjuk</option>
+        <option value="ponorogo">Ponorogo</option>
+        <option value="probolinggo">Probolinggo</option>
+        <option value="madiun">Madiun</option>
+      </select>
+    </div>
+    <div id="cityStatus" class="status">Kediri, East Java</div>
   </div>
 
   <!-- Proxy Section -->
