@@ -1,16 +1,23 @@
 // Background Service Worker for GitHub Education Helper
 
-const PROXY_API = "https://eclipseproxy.com/api/genProxy?proxy=eclipse_gitdevaldo-country-id-city-nganjuk-session-NIjX1u11-lifetime-30%3A11c11bdc-ef9e-4b82-b61c-df20cce291ac%3Acore.eclipseproxy.com%3A10000&format=h:pt:u:ps&amount=1";
+const PROXY_API = "http://eclipseproxy.com/api/genProxy?proxy=eclipse_gitdevaldo-country-id-city-kediri-session-wiSE63Mj-lifetime-30%3A11c11bdc-ef9e-4b82-b61c-df20cce291ac%3Acore.eclipseproxy.com%3A10000&format=h:pt:u:ps&amount=1";
 const ADDRESS_API = "https://mocloc.com/api/v1/addresses/ID?count=1";
+const IP_CHECK_API = "https://ipapi.co/json/";
 
-// Indonesian location spoofing data (Nganjuk, East Java - matching proxy location)
+const DEFAULT_PROXY = {
+    host: "core.eclipseproxy.com",
+    port: 10000,
+    username: "eclipse_gitdevaldo-country-id-city-kediri-session-iJhB7xfP-lifetime-30",
+    password: "11c11bdc-ef9e-4b82-b61c-df20cce291ac"
+};
+
 const SPOOF_DATA = {
     timezone: "Asia/Jakarta",
     language: "id-ID",
     languages: ["id-ID", "id", "en-US", "en"],
-    latitude: -7.6039,
-    longitude: 111.9030,
-    city: "Nganjuk",
+    latitude: -7.8177,
+    longitude: 112.0174,
+    city: "Kediri",
     country: "Indonesia"
 };
 
@@ -56,14 +63,14 @@ async function fetchProxy() {
 
 // Configure Chrome proxy settings with PAC script for domain-specific routing
 async function setProxy(proxyData) {
-    // PAC script: only route *.github.com through proxy, everything else direct
     const pacScript = `
         function FindProxyForURL(url, host) {
-            // Only proxy GitHub domains
             if (shExpMatch(host, "*.github.com") || shExpMatch(host, "github.com")) {
                 return "PROXY ${proxyData.host}:${proxyData.port}";
             }
-            // Everything else goes direct
+            if (shExpMatch(host, "ipapi.co")) {
+                return "PROXY ${proxyData.host}:${proxyData.port}";
+            }
             return "DIRECT";
         }
     `;
@@ -120,24 +127,15 @@ chrome.webRequest.onAuthRequired.addListener(
 
 // Also restore proxy credentials from storage on startup
 chrome.storage.local.get(['proxyEnabled', 'proxyData', 'spoofEnabled']).then(async (settings) => {
-    // Enable proxy if it was enabled or if this is first run (default on)
     if (settings.proxyEnabled !== false) {
-        if (settings.proxyData) {
-            currentProxyData = settings.proxyData;
-            setProxy(settings.proxyData).then(() => {
-                console.log("🌐 Proxy restored from storage");
-            }).catch(console.error);
-        } else {
-            // First run without data, fetch and enable
-            try {
-                const proxyData = await fetchProxy();
-                await setProxy(proxyData);
-                currentProxyData = proxyData;
-                await chrome.storage.local.set({ proxyEnabled: true, proxyData: proxyData });
-                console.log("🌐 Proxy enabled on startup");
-            } catch (error) {
-                console.error("Failed to enable proxy on startup:", error);
-            }
+        const proxyData = settings.proxyData || DEFAULT_PROXY;
+        currentProxyData = proxyData;
+        try {
+            await setProxy(proxyData);
+            await chrome.storage.local.set({ proxyEnabled: true, proxyData: proxyData });
+            console.log("🌐 Proxy restored/enabled on startup");
+        } catch (error) {
+            console.error("Failed to enable proxy on startup:", error);
         }
     }
     
@@ -368,7 +366,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         try {
             switch (message.action) {
                 case 'enableProxy': {
-                    const proxyData = await fetchProxy();
+                    const proxyData = DEFAULT_PROXY;
                     await setProxy(proxyData);
                     currentProxyData = proxyData;
                     sendResponse({ success: true, proxyData });
@@ -418,6 +416,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     break;
                 }
 
+                case 'checkIP': {
+                    try {
+                        const response = await fetch(IP_CHECK_API);
+                        const data = await response.json();
+                        sendResponse({
+                            success: true,
+                            ip: data.ip,
+                            country: data.country_name,
+                            countryCode: data.country_code,
+                            city: data.city,
+                            region: data.region,
+                            org: data.org,
+                            timezone: data.timezone
+                        });
+                    } catch (error) {
+                        sendResponse({ success: false, error: error.message });
+                    }
+                    break;
+                }
+
                 default:
                     sendResponse({ success: false, error: 'Unknown action' });
             }
@@ -444,22 +462,19 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     console.log('GitHub Education Helper installed');
     
     if (details.reason === 'install') {
-        // Enable proxy by default
         try {
-            const proxyData = await fetchProxy();
-            await setProxy(proxyData);
-            currentProxyData = proxyData;
+            await setProxy(DEFAULT_PROXY);
+            currentProxyData = DEFAULT_PROXY;
             await chrome.storage.local.set({ 
                 proxyEnabled: true, 
-                proxyData: proxyData,
+                proxyData: DEFAULT_PROXY,
                 spoofEnabled: true,
                 spoofData: SPOOF_DATA
             });
-            console.log('✅ Proxy enabled by default');
+            console.log('✅ Proxy enabled by default (Kediri)');
             console.log('✅ Spoofing enabled by default');
         } catch (error) {
             console.error('Failed to enable proxy on install:', error);
-            // Still enable spoofing even if proxy fails
             await chrome.storage.local.set({ 
                 spoofEnabled: true,
                 spoofData: SPOOF_DATA

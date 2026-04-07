@@ -132,10 +132,103 @@
       color: #57606a;
       margin-top: 6px;
     }
+    .ip-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid #d0d7de;
+      background: #f6f8fa;
+    }
+    .ip-banner.protected {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border-color: #2ea44f;
+      color: #fff;
+    }
+    .ip-banner.unprotected {
+      background: linear-gradient(135deg, #2d1b1b 0%, #3d1f1f 100%);
+      border-color: #cf222e;
+      color: #fff;
+    }
+    .ip-banner.checking {
+      background: #f6f8fa;
+      color: #57606a;
+    }
+    .ip-flag {
+      font-size: 18px;
+      line-height: 1;
+    }
+    .ip-address {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 13px;
+      flex: 1;
+    }
+    .ip-badge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .ip-badge.protected {
+      background: #2ea44f;
+      color: #fff;
+    }
+    .ip-badge.unprotected {
+      background: #cf222e;
+      color: #fff;
+    }
+    .ip-location {
+      font-size: 11px;
+      font-weight: 400;
+      color: #8b949e;
+      margin-top: 4px;
+    }
+    .ip-refresh-btn {
+      background: none;
+      border: none;
+      color: #8b949e;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px;
+      margin: 0;
+      width: auto;
+      line-height: 1;
+    }
+    .ip-refresh-btn:hover {
+      color: #fff;
+      background: none;
+    }
+    .ip-refresh-btn.spinning {
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
   <h2>🎓 GitHub Education Helper</h2>
+
+  <!-- IP Checker Banner -->
+  <div id="ipBanner" class="ip-banner checking">
+    <span class="ip-flag" id="ipFlag">🌐</span>
+    <div style="flex:1;">
+      <span class="ip-address" id="ipAddress">Checking IP...</span>
+      <div class="ip-location" id="ipLocation"></div>
+    </div>
+    <span id="ipBadge" class="ip-badge" style="display:none;"></span>
+    <button class="ip-refresh-btn" id="ipRefreshBtn" title="Refresh IP">🔄</button>
+  </div>
 
   <!-- Proxy Section -->
   <div class="section">

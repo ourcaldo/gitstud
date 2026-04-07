@@ -1,5 +1,12 @@
 // Popup script for GitHub Education Helper
 
+const COUNTRY_FLAGS = {
+    'ID': '🇮🇩', 'US': '🇺🇸', 'GB': '🇬🇧', 'JP': '🇯🇵', 'SG': '🇸🇬',
+    'MY': '🇲🇾', 'AU': '🇦🇺', 'DE': '🇩🇪', 'FR': '🇫🇷', 'NL': '🇳🇱',
+    'IN': '🇮🇳', 'KR': '🇰🇷', 'BR': '🇧🇷', 'CA': '🇨🇦', 'TH': '🇹🇭',
+    'VN': '🇻🇳', 'PH': '🇵🇭', 'RU': '🇷🇺', 'CN': '🇨🇳', 'HK': '🇭🇰',
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
     const proxyToggle = document.getElementById('proxyToggle');
     const spoofToggle = document.getElementById('spoofToggle');
@@ -13,8 +20,63 @@ document.addEventListener('DOMContentLoaded', async () => {
     const addressPreview = document.getElementById('addressPreview');
     const addressDetails = document.getElementById('addressDetails');
     const refreshProxyBtn = document.getElementById('refreshProxy');
+    const ipBanner = document.getElementById('ipBanner');
+    const ipFlag = document.getElementById('ipFlag');
+    const ipAddress = document.getElementById('ipAddress');
+    const ipLocation = document.getElementById('ipLocation');
+    const ipBadge = document.getElementById('ipBadge');
+    const ipRefreshBtn = document.getElementById('ipRefreshBtn');
 
-    // Load saved settings
+    async function checkIP() {
+        ipBanner.className = 'ip-banner checking';
+        ipFlag.textContent = '🌐';
+        ipAddress.textContent = 'Checking IP...';
+        ipLocation.textContent = '';
+        ipBadge.style.display = 'none';
+        ipRefreshBtn.classList.add('spinning');
+
+        try {
+            const response = await chrome.runtime.sendMessage({ action: 'checkIP' });
+            ipRefreshBtn.classList.remove('spinning');
+
+            if (response.success) {
+                const settings = await chrome.storage.local.get(['proxyEnabled']);
+                const isProxied = settings.proxyEnabled;
+                const isIndonesia = response.countryCode === 'ID';
+                const isProtected = isProxied && isIndonesia;
+
+                ipFlag.textContent = COUNTRY_FLAGS[response.countryCode] || '🏳️';
+                ipAddress.textContent = response.ip;
+                ipLocation.textContent = `${response.city}, ${response.country}`;
+
+                ipBadge.style.display = 'flex';
+                if (isProtected) {
+                    ipBanner.className = 'ip-banner protected';
+                    ipBadge.className = 'ip-badge protected';
+                    ipBadge.textContent = '🛡️ PROTECTED';
+                } else if (isProxied && !isIndonesia) {
+                    ipBanner.className = 'ip-banner unprotected';
+                    ipBadge.className = 'ip-badge unprotected';
+                    ipBadge.textContent = '⚠️ PROXY ERROR';
+                } else {
+                    ipBanner.className = 'ip-banner unprotected';
+                    ipBadge.className = 'ip-badge unprotected';
+                    ipBadge.textContent = '⚠️ EXPOSED';
+                }
+            } else {
+                ipAddress.textContent = 'Failed to check IP';
+                ipBanner.className = 'ip-banner checking';
+            }
+        } catch (error) {
+            ipRefreshBtn.classList.remove('spinning');
+            ipAddress.textContent = 'Error checking IP';
+            ipBanner.className = 'ip-banner checking';
+        }
+    }
+
+    ipRefreshBtn.addEventListener('click', checkIP);
+    checkIP();
+
     const settings = await chrome.storage.local.get(['proxyEnabled', 'spoofEnabled', 'proxyData', 'spoofData', 'lastAddress']);
     
     proxyToggle.checked = settings.proxyEnabled || false;
@@ -41,6 +103,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (response.success) {
                 await chrome.storage.local.set({ proxyEnabled: true, proxyData: response.proxyData });
                 updateProxyUI(true, response.proxyData);
+                checkIP();
             } else {
                 proxyToggle.checked = false;
                 proxyStatus.textContent = 'Error: ' + response.error;
@@ -50,6 +113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             await chrome.runtime.sendMessage({ action: 'disableProxy' });
             await chrome.storage.local.set({ proxyEnabled: false });
             updateProxyUI(false, null);
+            checkIP();
         }
     });
 
