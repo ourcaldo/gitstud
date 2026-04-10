@@ -18,3 +18,9 @@ id = "pbl-nATUDSvXYC9jt9EhV"
 uri = "file://curl_request.md"
 type = "text"
 title = "cURL Request - GitHub Education Faculty Submit"
+
+[[outputs]]
+id = "rkXV7p8UWXPF2qitWuOZ5"
+uri = "file://attached_assets/submit_result.png"
+type = "image"
+title = "Submitted Image (what GitHub received)"
