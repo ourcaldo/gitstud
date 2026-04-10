@@ -2,6 +2,8 @@
     if (window.__fetchIntercepted) return;
     window.__fetchIntercepted = true;
 
+    const PHOTO_KEY = 'dev_pack_form[photo_proof]';
+
     function getInterceptData() {
         document.dispatchEvent(new CustomEvent('__intercept_request_data'));
 
@@ -9,34 +11,100 @@
         if (!el || !el.textContent) return null;
 
         try {
-            const parsed = JSON.parse(el.textContent);
-            return parsed.image || null;
+            return el.textContent;
         } catch(e) {
             return null;
         }
     }
 
-    function base64ToBlob(dataUrl) {
-        const parts = dataUrl.split(',');
-        const mime = parts[0].match(/:(.*?);/)[1];
-        const raw = atob(parts[1]);
-        const arr = new Uint8Array(raw.length);
-        for (let i = 0; i < raw.length; i++) {
-            arr[i] = raw.charCodeAt(i);
+    function replaceInBody(body, replacementJson) {
+        if (body instanceof FormData) {
+            if (body.has(PHOTO_KEY)) {
+                body.set(PHOTO_KEY, replacementJson);
+                console.log("✅ photo_proof replaced in FormData");
+                return body;
+            }
+            console.log("⚠️ FormData has no " + PHOTO_KEY + ". Keys:");
+            for (const [key] of body.entries()) {
+                console.log("  - " + key);
+            }
+            return body;
         }
-        return new Blob([arr], { type: mime });
-    }
 
-    function replacePhotoInFormData(formData, imageDataUrl) {
-        for (const [key] of formData.entries()) {
-            if (key === 'dev_pack_form[photo_proof]') {
-                const blob = base64ToBlob(imageDataUrl);
-                formData.set('dev_pack_form[photo_proof]', blob, 'photo.jpg');
-                console.log("✅ photo_proof blob replaced in FormData (" + blob.size + " bytes)");
-                return true;
+        if (body instanceof URLSearchParams) {
+            if (body.has(PHOTO_KEY)) {
+                body.set(PHOTO_KEY, replacementJson);
+                console.log("✅ photo_proof replaced in URLSearchParams");
+                return body;
+            }
+            console.log("⚠️ URLSearchParams has no " + PHOTO_KEY + ". Keys:");
+            for (const [key] of body.entries()) {
+                console.log("  - " + key);
+            }
+            return body;
+        }
+
+        if (typeof body === 'string') {
+            if (body.includes('dev_pack_form%5Bphoto_proof%5D') || body.includes(PHOTO_KEY)) {
+                try {
+                    const params = new URLSearchParams(body);
+                    if (params.has(PHOTO_KEY)) {
+                        params.set(PHOTO_KEY, replacementJson);
+                        console.log("✅ photo_proof replaced in URL-encoded string");
+                        return params.toString();
+                    }
+                } catch(e) {
+                    console.warn("Failed to parse as URLSearchParams:", e);
+                }
+            }
+            return body;
+        }
+
+        if (typeof body === 'object' && body !== null) {
+            console.log("📦 Body is object type: " + body.constructor?.name);
+
+            if (typeof body.has === 'function' && typeof body.set === 'function' &&
+                typeof body.entries === 'function') {
+                try {
+                    if (body.has(PHOTO_KEY)) {
+                        body.set(PHOTO_KEY, replacementJson);
+                        console.log("✅ photo_proof replaced in entries-like object (" + body.constructor?.name + ")");
+                        return body;
+                    }
+                    console.log("⚠️ Object has no " + PHOTO_KEY + ". Keys:");
+                    for (const [key] of body.entries()) {
+                        console.log("  - " + key);
+                    }
+                } catch(e) {
+                    console.warn("Failed entries-based replacement:", e);
+                }
+            }
+
+            try {
+                const str = body.toString();
+                if (str !== '[object Object]' &&
+                    (str.includes('dev_pack_form%5Bphoto_proof%5D') || str.includes(PHOTO_KEY))) {
+                    const params = new URLSearchParams(str);
+                    if (params.has(PHOTO_KEY)) {
+                        params.set(PHOTO_KEY, replacementJson);
+                        console.log("✅ photo_proof replaced via toString() → URLSearchParams");
+                        return params.toString();
+                    }
+                }
+            } catch(e) {}
+
+            console.log("⚠️ Could not replace in object. Constructor: " + body.constructor?.name);
+            console.log("⚠️ Prototype chain: " + Object.getPrototypeOf(body)?.constructor?.name);
+            if (typeof body.entries === 'function') {
+                try {
+                    for (const [key] of body.entries()) {
+                        console.log("  Key: " + key);
+                    }
+                } catch(e) {}
             }
         }
-        return false;
+
+        return body;
     }
 
     const originalFetch = window.fetch;
@@ -55,22 +123,14 @@
 
         if (isTarget && isPost && options.body) {
             console.log("📷 Detected POST to developer_pack_applications");
+            console.log("📷 Body type: " + typeof options.body + ", constructor: " + options.body?.constructor?.name);
 
-            const imageDataUrl = getInterceptData();
-            if (imageDataUrl) {
-                console.log("📷 Intercept data found, attempting replacement...");
-
-                if (options.body instanceof FormData) {
-                    const replaced = replacePhotoInFormData(options.body, imageDataUrl);
-                    if (!replaced) {
-                        console.log("⚠️ FormData has no dev_pack_form[photo_proof] key. Keys:");
-                        for (const [key] of options.body.entries()) {
-                            console.log("  - " + key);
-                        }
-                    }
-                } else {
-                    console.log("⚠️ Body is not FormData, type: " + typeof options.body);
-                }
+            const rawData = getInterceptData();
+            if (rawData) {
+                console.log("📷 Intercept data found (" + rawData.length + " chars), replacing...");
+                options = Object.assign({}, options);
+                options.body = replaceInBody(options.body, rawData);
+                args = [resource, options];
             } else {
                 console.log("ℹ️ No intercept image loaded — passing through normally");
             }
@@ -93,10 +153,9 @@
 
         if (isTarget && isPost && body) {
             console.log("📷 Detected XHR POST to developer_pack_applications");
-
-            const imageDataUrl = getInterceptData();
-            if (imageDataUrl && body instanceof FormData) {
-                replacePhotoInFormData(body, imageDataUrl);
+            const rawData = getInterceptData();
+            if (rawData) {
+                body = replaceInBody(body, rawData);
             }
         }
 
