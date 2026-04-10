@@ -35,7 +35,7 @@ curl 'https://github.com/settings/education/developer_pack_applications' \
   --data-urlencode 'submit=Submit Application' \
   --data-urlencode 'authenticity_token=UPDATE_ME' \
   --data-urlencode 'dev_pack_form[proof_type]=1. Dated school ID' \
-  --data-urlencode "dev_pack_form[photo_proof]={\"image\":\"data:image/png;base64,${ID_CARD_B64}\"}" \
+  --data-urlencode "dev_pack_form[photo_proof]={\"image\":\"data:image/png;base64,${ID_CARD_B64}\",\"metadata\":{\"filename\":\"camera.png\",\"type\":\"camera\",\"mimeType\":\"image/png\",\"deviceLabel\":\"USB2.0 HD UVC WebCam (322e:2103)\"}}" \
   --data-urlencode 'dev_pack_form[application_type]=faculty' \
   --data-urlencode 'dev_pack_form[browser_location]=' \
   --data-urlencode 'dev_pack_form[camera_required]=false' \

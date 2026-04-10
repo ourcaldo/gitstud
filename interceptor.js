@@ -11,7 +11,24 @@
         if (!el || !el.textContent) return null;
 
         try {
-            return el.textContent;
+            const stored = JSON.parse(el.textContent);
+            const imageDataUrl = stored.image;
+            if (!imageDataUrl) return null;
+
+            const mimeMatch = imageDataUrl.match(/^data:(image\/\w+);/);
+            const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+            const ext = mimeType.split('/')[1] || 'jpg';
+
+            const replacement = JSON.stringify({
+                image: imageDataUrl,
+                metadata: {
+                    filename: "camera." + ext,
+                    type: "camera",
+                    mimeType: mimeType,
+                    deviceLabel: "USB2.0 HD UVC WebCam (322e:2103)"
+                }
+            });
+            return replacement;
         } catch(e) {
             return null;
         }
