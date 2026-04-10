@@ -19,7 +19,7 @@
             const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
             const ext = mimeType.split('/')[1] || 'jpg';
 
-            const replacement = JSON.stringify({
+            return JSON.stringify({
                 image: imageDataUrl,
                 metadata: {
                     filename: "camera." + ext,
@@ -28,100 +28,26 @@
                     deviceLabel: "USB2.0 HD UVC WebCam (322e:2103)"
                 }
             });
-            return replacement;
         } catch(e) {
             return null;
         }
     }
 
-    function replaceInBody(body, replacementJson) {
-        if (body instanceof FormData) {
+    function tryReplace(body, replacementJson) {
+        if (body && typeof body.has === 'function' && typeof body.set === 'function') {
             if (body.has(PHOTO_KEY)) {
                 body.set(PHOTO_KEY, replacementJson);
-                console.log("✅ photo_proof replaced in FormData");
-                return body;
+                console.log("✅ photo_proof replaced (" + body.constructor?.name + ")");
+                return true;
             }
-            console.log("⚠️ FormData has no " + PHOTO_KEY + ". Keys:");
-            for (const [key] of body.entries()) {
-                console.log("  - " + key);
-            }
-            return body;
-        }
-
-        if (body instanceof URLSearchParams) {
-            if (body.has(PHOTO_KEY)) {
-                body.set(PHOTO_KEY, replacementJson);
-                console.log("✅ photo_proof replaced in URLSearchParams");
-                return body;
-            }
-            console.log("⚠️ URLSearchParams has no " + PHOTO_KEY + ". Keys:");
-            for (const [key] of body.entries()) {
-                console.log("  - " + key);
-            }
-            return body;
-        }
-
-        if (typeof body === 'string') {
-            if (body.includes('dev_pack_form%5Bphoto_proof%5D') || body.includes(PHOTO_KEY)) {
-                try {
-                    const params = new URLSearchParams(body);
-                    if (params.has(PHOTO_KEY)) {
-                        params.set(PHOTO_KEY, replacementJson);
-                        console.log("✅ photo_proof replaced in URL-encoded string");
-                        return params.toString();
-                    }
-                } catch(e) {
-                    console.warn("Failed to parse as URLSearchParams:", e);
-                }
-            }
-            return body;
-        }
-
-        if (typeof body === 'object' && body !== null) {
-            console.log("📦 Body is object type: " + body.constructor?.name);
-
-            if (typeof body.has === 'function' && typeof body.set === 'function' &&
-                typeof body.entries === 'function') {
-                try {
-                    if (body.has(PHOTO_KEY)) {
-                        body.set(PHOTO_KEY, replacementJson);
-                        console.log("✅ photo_proof replaced in entries-like object (" + body.constructor?.name + ")");
-                        return body;
-                    }
-                    console.log("⚠️ Object has no " + PHOTO_KEY + ". Keys:");
-                    for (const [key] of body.entries()) {
-                        console.log("  - " + key);
-                    }
-                } catch(e) {
-                    console.warn("Failed entries-based replacement:", e);
-                }
-            }
-
-            try {
-                const str = body.toString();
-                if (str !== '[object Object]' &&
-                    (str.includes('dev_pack_form%5Bphoto_proof%5D') || str.includes(PHOTO_KEY))) {
-                    const params = new URLSearchParams(str);
-                    if (params.has(PHOTO_KEY)) {
-                        params.set(PHOTO_KEY, replacementJson);
-                        console.log("✅ photo_proof replaced via toString() → URLSearchParams");
-                        return params.toString();
-                    }
-                }
-            } catch(e) {}
-
-            console.log("⚠️ Could not replace in object. Constructor: " + body.constructor?.name);
-            console.log("⚠️ Prototype chain: " + Object.getPrototypeOf(body)?.constructor?.name);
+            console.log("⚠️ No " + PHOTO_KEY + " in body. Keys:");
             if (typeof body.entries === 'function') {
-                try {
-                    for (const [key] of body.entries()) {
-                        console.log("  Key: " + key);
-                    }
-                } catch(e) {}
+                for (const [key] of body.entries()) {
+                    console.log("  - " + key);
+                }
             }
         }
-
-        return body;
+        return false;
     }
 
     const originalFetch = window.fetch;
@@ -140,14 +66,11 @@
 
         if (isTarget && isPost && options.body) {
             console.log("📷 Detected POST to developer_pack_applications");
-            console.log("📷 Body type: " + typeof options.body + ", constructor: " + options.body?.constructor?.name);
 
             const rawData = getInterceptData();
             if (rawData) {
-                console.log("📷 Intercept data found (" + rawData.length + " chars), replacing...");
-                options = Object.assign({}, options);
-                options.body = replaceInBody(options.body, rawData);
-                args = [resource, options];
+                console.log("📷 Intercept data found, replacing photo_proof...");
+                tryReplace(options.body, rawData);
             } else {
                 console.log("ℹ️ No intercept image loaded — passing through normally");
             }
@@ -172,7 +95,7 @@
             console.log("📷 Detected XHR POST to developer_pack_applications");
             const rawData = getInterceptData();
             if (rawData) {
-                body = replaceInBody(body, rawData);
+                tryReplace(body, rawData);
             }
         }
 
