@@ -467,6 +467,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
         try {
             switch (message.action) {
+                case 'injectInterceptor': {
+                    const tabId = sender.tab?.id;
+                    if (tabId) {
+                        try {
+                            await chrome.scripting.executeScript({
+                                target: { tabId },
+                                files: ['interceptor.js'],
+                                world: 'MAIN'
+                            });
+                            console.log('✅ Interceptor injected into MAIN world for tab', tabId);
+                        } catch (e) {
+                            console.error('Failed to inject interceptor:', e);
+                        }
+                    }
+                    sendResponse({ success: true });
+                    break;
+                }
+
                 case 'enableProxy': {
                     const proxyData = await fetchProxy(currentCity);
                     await setProxy(proxyData);

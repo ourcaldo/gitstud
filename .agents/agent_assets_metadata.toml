@@ -6,3 +6,9 @@ id = "4TdJ4XegMk7C9k5oIKc1T"
 uri = "file://attached_assets/camera_preview.jpg"
 type = "image"
 title = "Camera Photo (from base64 blob)"
+
+[[outputs]]
+id = "8P4ZosGY6qkUDq2QY5jhR"
+uri = "file://attached_assets/camera_preview2.jpg"
+type = "image"
+title = "Camera Photo (attempt 2)"

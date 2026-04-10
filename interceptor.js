@@ -3,38 +3,40 @@
     window.__fetchIntercepted = true;
 
     function getInterceptData() {
-        return new Promise((resolve) => {
-            const responseEl = document.getElementById('__intercept_response');
-            if (!responseEl) { resolve(null); return; }
-            responseEl.textContent = '';
-            document.dispatchEvent(new CustomEvent('__intercept_request'));
+        document.dispatchEvent(new CustomEvent('__intercept_request_data'));
 
-            setTimeout(() => {
-                const data = responseEl.textContent;
-                resolve(data || null);
-            }, 50);
-        });
+        const el = document.getElementById('__intercept_data');
+        if (!el || !el.textContent) return null;
+
+        try {
+            const parsed = JSON.parse(el.textContent);
+            return parsed.image || null;
+        } catch(e) {
+            return null;
+        }
     }
 
-    function replacePhotoProof(body, imageData) {
-        if (body instanceof FormData) {
-            for (const [key] of body.entries()) {
-                if (key === 'dev_pack_form[photo_proof]') {
-                    const byteString = atob(imageData.split(',')[1]);
-                    const mimeType = imageData.split(',')[0].split(':')[1].split(';')[0];
-                    const ab = new ArrayBuffer(byteString.length);
-                    const ia = new Uint8Array(ab);
-                    for (let i = 0; i < byteString.length; i++) {
-                        ia[i] = byteString.charCodeAt(i);
-                    }
-                    const blob = new Blob([ab], { type: mimeType });
-                    body.set('dev_pack_form[photo_proof]', blob, 'photo.jpg');
-                    console.log("✅ photo_proof blob replaced in FormData");
-                    return body;
-                }
+    function base64ToBlob(dataUrl) {
+        const parts = dataUrl.split(',');
+        const mime = parts[0].match(/:(.*?);/)[1];
+        const raw = atob(parts[1]);
+        const arr = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) {
+            arr[i] = raw.charCodeAt(i);
+        }
+        return new Blob([arr], { type: mime });
+    }
+
+    function replacePhotoInFormData(formData, imageDataUrl) {
+        for (const [key] of formData.entries()) {
+            if (key === 'dev_pack_form[photo_proof]') {
+                const blob = base64ToBlob(imageDataUrl);
+                formData.set('dev_pack_form[photo_proof]', blob, 'photo.jpg');
+                console.log("✅ photo_proof blob replaced in FormData (" + blob.size + " bytes)");
+                return true;
             }
         }
-        return body;
+        return false;
     }
 
     const originalFetch = window.fetch;
@@ -52,18 +54,25 @@
         const isPost = options && options.method && options.method.toUpperCase() === 'POST';
 
         if (isTarget && isPost && options.body) {
-            const rawData = await getInterceptData();
-            if (rawData) {
-                try {
-                    const parsed = JSON.parse(rawData);
-                    const imageData = parsed.image;
-                    if (imageData) {
-                        console.log("📷 Intercepting fetch POST to developer_pack_applications");
-                        options.body = replacePhotoProof(options.body, imageData);
+            console.log("📷 Detected POST to developer_pack_applications");
+
+            const imageDataUrl = getInterceptData();
+            if (imageDataUrl) {
+                console.log("📷 Intercept data found, attempting replacement...");
+
+                if (options.body instanceof FormData) {
+                    const replaced = replacePhotoInFormData(options.body, imageDataUrl);
+                    if (!replaced) {
+                        console.log("⚠️ FormData has no dev_pack_form[photo_proof] key. Keys:");
+                        for (const [key] of options.body.entries()) {
+                            console.log("  - " + key);
+                        }
                     }
-                } catch(e) {
-                    console.warn("Intercept parse error:", e);
+                } else {
+                    console.log("⚠️ Body is not FormData, type: " + typeof options.body);
                 }
+            } else {
+                console.log("ℹ️ No intercept image loaded — passing through normally");
             }
         }
 
@@ -79,31 +88,20 @@
 
     const originalXHRSend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.send = function(body) {
-        const self = this;
-        const isTarget = self.__interceptUrl && self.__interceptUrl.includes('developer_pack_applications');
-        const isPost = self.__interceptMethod && self.__interceptMethod.toUpperCase() === 'POST';
+        const isTarget = this.__interceptUrl && this.__interceptUrl.includes('developer_pack_applications');
+        const isPost = this.__interceptMethod && this.__interceptMethod.toUpperCase() === 'POST';
 
         if (isTarget && isPost && body) {
-            getInterceptData().then((rawData) => {
-                if (rawData) {
-                    try {
-                        const parsed = JSON.parse(rawData);
-                        const imageData = parsed.image;
-                        if (imageData) {
-                            console.log("📷 Intercepting XHR POST to developer_pack_applications");
-                            body = replacePhotoProof(body, imageData);
-                        }
-                    } catch(e) {
-                        console.warn("Intercept XHR parse error:", e);
-                    }
-                }
-                originalXHRSend.call(self, body);
-            });
-            return;
+            console.log("📷 Detected XHR POST to developer_pack_applications");
+
+            const imageDataUrl = getInterceptData();
+            if (imageDataUrl && body instanceof FormData) {
+                replacePhotoInFormData(body, imageDataUrl);
+            }
         }
 
         return originalXHRSend.call(this, body);
     };
 
-    console.log("🔗 Fetch/XHR interceptor installed (external script, event bridge)");
+    console.log("🔗 Fetch/XHR interceptor installed (MAIN world, CSP bypass)");
 })();

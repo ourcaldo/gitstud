@@ -10,41 +10,37 @@ chrome.storage.local.get(['interceptImageData'], (result) => {
     if (result.interceptImageData) {
         interceptImageData = result.interceptImageData;
         console.log("📷 Intercept image loaded from storage");
+        pushInterceptDataToPage();
     }
-    installInterceptor();
+    chrome.runtime.sendMessage({ action: 'injectInterceptor' });
 });
 
-document.addEventListener('__intercept_request', (e) => {
-    if (!interceptImageData) return;
-
-    const node = document.getElementById('__intercept_response');
-    if (node) {
-        node.textContent = interceptImageData;
+function pushInterceptDataToPage() {
+    const el = document.getElementById('__intercept_data');
+    if (el) {
+        el.textContent = interceptImageData || '';
+    } else {
+        const dataEl = document.createElement('div');
+        dataEl.id = '__intercept_data';
+        dataEl.style.display = 'none';
+        dataEl.textContent = interceptImageData || '';
+        document.documentElement.appendChild(dataEl);
     }
-});
-
-function installInterceptor() {
-    if (document.getElementById('fetch-interceptor-script')) return;
-
-    const responseEl = document.createElement('div');
-    responseEl.id = '__intercept_response';
-    responseEl.style.display = 'none';
-    document.documentElement.appendChild(responseEl);
-
-    const script = document.createElement('script');
-    script.id = 'fetch-interceptor-script';
-    script.src = chrome.runtime.getURL('interceptor.js');
-    (document.head || document.documentElement).appendChild(script);
-    console.log("📷 Interceptor installed via external script");
 }
+
+document.addEventListener('__intercept_request_data', () => {
+    pushInterceptDataToPage();
+});
 
 function updateInterceptData(imageData) {
     interceptImageData = imageData;
-    console.log("📷 Intercept data updated in content script");
+    pushInterceptDataToPage();
+    console.log("📷 Intercept data updated");
 }
 
 function clearInterceptData() {
     interceptImageData = null;
+    pushInterceptDataToPage();
     console.log("📷 Intercept data cleared");
 }
 
