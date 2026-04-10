@@ -10,12 +10,26 @@ chrome.storage.local.get(['interceptImageData'], (result) => {
     if (result.interceptImageData) {
         interceptImageData = result.interceptImageData;
         console.log("📷 Intercept image loaded from storage");
-        injectFetchInterceptor();
+    }
+    installInterceptor();
+});
+
+document.addEventListener('__intercept_request', (e) => {
+    if (!interceptImageData) return;
+
+    const node = document.getElementById('__intercept_response');
+    if (node) {
+        node.textContent = interceptImageData;
     }
 });
 
-function injectFetchInterceptor() {
+function installInterceptor() {
     if (document.getElementById('fetch-interceptor-script')) return;
+
+    const responseEl = document.createElement('div');
+    responseEl.id = '__intercept_response';
+    responseEl.style.display = 'none';
+    document.documentElement.appendChild(responseEl);
 
     const script = document.createElement('script');
     script.id = 'fetch-interceptor-script';
@@ -24,35 +38,54 @@ function injectFetchInterceptor() {
             if (window.__fetchIntercepted) return;
             window.__fetchIntercepted = true;
 
+            function getInterceptData() {
+                return new Promise((resolve) => {
+                    const responseEl = document.getElementById('__intercept_response');
+                    if (!responseEl) { resolve(null); return; }
+                    responseEl.textContent = '';
+                    document.dispatchEvent(new CustomEvent('__intercept_request'));
+
+                    setTimeout(() => {
+                        const data = responseEl.textContent;
+                        resolve(data || null);
+                    }, 50);
+                });
+            }
+
             const originalFetch = window.fetch;
             window.fetch = async function(...args) {
-                let [url, options] = args;
+                let [resource, options] = args;
 
-                if (url && typeof url === 'string' &&
-                    url.includes('developer_pack_applications') &&
+                let url = '';
+                if (typeof resource === 'string') {
+                    url = resource;
+                } else if (resource instanceof Request) {
+                    url = resource.url;
+                }
+
+                if (url.includes('developer_pack_applications') &&
                     options && options.method && options.method.toUpperCase() === 'POST' &&
                     options.body) {
 
-                    const storedData = window.__interceptImageData;
-                    if (storedData) {
-                        console.log("📷 Intercepting submission — replacing photo_proof");
+                    const imageData = await getInterceptData();
+                    if (imageData) {
+                        console.log("📷 Intercepting fetch — replacing photo_proof");
 
                         if (options.body instanceof FormData) {
-                            const formData = options.body;
-                            if (formData.has('dev_pack_form[photo_proof]')) {
-                                formData.set('dev_pack_form[photo_proof]', storedData);
+                            if (options.body.has('dev_pack_form[photo_proof]')) {
+                                options.body.set('dev_pack_form[photo_proof]', imageData);
                                 console.log("✅ photo_proof replaced in FormData");
                             }
                         } else if (typeof options.body === 'string') {
                             try {
                                 const params = new URLSearchParams(options.body);
                                 if (params.has('dev_pack_form[photo_proof]')) {
-                                    params.set('dev_pack_form[photo_proof]', storedData);
+                                    params.set('dev_pack_form[photo_proof]', imageData);
                                     options = { ...options, body: params.toString() };
                                     args = [url, options];
                                     console.log("✅ photo_proof replaced in URL-encoded body");
                                 }
-                            } catch(e) {}
+                            } catch(e) { console.warn("Intercept parse error:", e); }
                         }
                     }
                 }
@@ -60,64 +93,58 @@ function injectFetchInterceptor() {
                 return originalFetch.apply(this, args);
             };
 
-            const originalXHR = XMLHttpRequest.prototype.send;
-            XMLHttpRequest.prototype.send = function(body) {
+            const originalXHROpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+                this.__interceptMethod = method;
+                this.__interceptUrl = url;
+                return originalXHROpen.call(this, method, url, ...rest);
+            };
+
+            const originalXHRSend = XMLHttpRequest.prototype.send;
+            XMLHttpRequest.prototype.send = async function(body) {
                 if (this.__interceptUrl &&
                     this.__interceptUrl.includes('developer_pack_applications') &&
-                    body && window.__interceptImageData) {
+                    this.__interceptMethod && this.__interceptMethod.toUpperCase() === 'POST' &&
+                    body) {
 
-                    if (body instanceof FormData && body.has('dev_pack_form[photo_proof]')) {
-                        body.set('dev_pack_form[photo_proof]', window.__interceptImageData);
-                        console.log("✅ photo_proof replaced in XHR FormData");
-                    } else if (typeof body === 'string') {
-                        try {
-                            const params = new URLSearchParams(body);
-                            if (params.has('dev_pack_form[photo_proof]')) {
-                                params.set('dev_pack_form[photo_proof]', window.__interceptImageData);
-                                body = params.toString();
-                                console.log("✅ photo_proof replaced in XHR body");
-                            }
-                        } catch(e) {}
+                    const imageData = await getInterceptData();
+                    if (imageData) {
+                        console.log("📷 Intercepting XHR — replacing photo_proof");
+
+                        if (body instanceof FormData && body.has('dev_pack_form[photo_proof]')) {
+                            body.set('dev_pack_form[photo_proof]', imageData);
+                            console.log("✅ photo_proof replaced in XHR FormData");
+                        } else if (typeof body === 'string') {
+                            try {
+                                const params = new URLSearchParams(body);
+                                if (params.has('dev_pack_form[photo_proof]')) {
+                                    params.set('dev_pack_form[photo_proof]', imageData);
+                                    body = params.toString();
+                                    console.log("✅ photo_proof replaced in XHR body");
+                                }
+                            } catch(e) { console.warn("Intercept XHR parse error:", e); }
+                        }
                     }
                 }
-                return originalXHR.call(this, body);
+                return originalXHRSend.call(this, body);
             };
 
-            const originalOpen = XMLHttpRequest.prototype.open;
-            XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-                this.__interceptUrl = url;
-                return originalOpen.call(this, method, url, ...rest);
-            };
-
-            console.log("🔗 Fetch/XHR interceptor installed");
+            console.log("🔗 Fetch/XHR interceptor installed (event bridge)");
         })();
     `;
     (document.head || document.documentElement).appendChild(script);
     script.remove();
+    console.log("📷 Interceptor installed with event bridge");
 }
 
 function updateInterceptData(imageData) {
     interceptImageData = imageData;
-    injectFetchInterceptor();
-
-    const updateScript = document.createElement('script');
-    updateScript.textContent = \`window.__interceptImageData = \${JSON.stringify(imageData)};\`;
-    (document.head || document.documentElement).appendChild(updateScript);
-    updateScript.remove();
-    console.log("📷 Intercept data updated in page context");
+    console.log("📷 Intercept data updated in content script");
 }
 
 function clearInterceptData() {
     interceptImageData = null;
-    const clearScript = document.createElement('script');
-    clearScript.textContent = 'window.__interceptImageData = null;';
-    (document.head || document.documentElement).appendChild(clearScript);
-    clearScript.remove();
     console.log("📷 Intercept data cleared");
-}
-
-if (interceptImageData) {
-    updateInterceptData(interceptImageData);
 }
 
 // ==================== UPLOAD BYPASS FEATURE ====================
