@@ -12,3 +12,9 @@ id = "8P4ZosGY6qkUDq2QY5jhR"
 uri = "file://attached_assets/camera_preview2.jpg"
 type = "image"
 title = "Camera Photo (attempt 2)"
+
+[[outputs]]
+id = "pbl-nATUDSvXYC9jt9EhV"
+uri = "file://curl_request.md"
+type = "text"
+title = "cURL Request - GitHub Education Faculty Submit"
