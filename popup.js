@@ -323,8 +323,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const reader = new FileReader();
         reader.onload = async (evt) => {
-            const base64Data = evt.target.result;
-            const imageBlob = JSON.stringify({ image: base64Data });
+            const originalDataUrl = evt.target.result;
+
+            let finalDataUrl = originalDataUrl;
+
+            if (!file.type || file.type !== 'image/jpeg') {
+                interceptStatus.textContent = 'Converting to JPEG...';
+                finalDataUrl = await convertToJpeg(originalDataUrl);
+            }
+
+            const imageBlob = JSON.stringify({ image: finalDataUrl });
 
             await chrome.storage.local.set({ interceptImageData: imageBlob });
             showInterceptLoaded(imageBlob);
@@ -338,6 +346,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         };
         reader.readAsDataURL(file);
+    }
+
+    function convertToJpeg(dataUrl) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/jpeg', 0.92));
+            };
+            img.src = dataUrl;
+        });
     }
 
     function showInterceptLoaded(imageBlob) {
