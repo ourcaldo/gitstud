@@ -263,6 +263,98 @@ document.addEventListener('DOMContentLoaded', async () => {
         refreshProxyBtn.disabled = false;
     });
 
+    // ==================== PHOTO INTERCEPT ====================
+    const interceptDropZone = document.getElementById('interceptDropZone');
+    const interceptDropText = document.getElementById('interceptDropText');
+    const interceptFile = document.getElementById('interceptFile');
+    const interceptPreview = document.getElementById('interceptPreview');
+    const interceptImage = document.getElementById('interceptImage');
+    const interceptStatus = document.getElementById('interceptStatus');
+    const interceptClear = document.getElementById('interceptClear');
+
+    const savedIntercept = await chrome.storage.local.get(['interceptImageData']);
+    if (savedIntercept.interceptImageData) {
+        showInterceptLoaded(savedIntercept.interceptImageData);
+    }
+
+    interceptDropZone.addEventListener('click', () => interceptFile.click());
+
+    interceptDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        interceptDropZone.classList.add('dragover');
+    });
+
+    interceptDropZone.addEventListener('dragleave', () => {
+        interceptDropZone.classList.remove('dragover');
+    });
+
+    interceptDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        interceptDropZone.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith('image/')) {
+            processInterceptFile(file);
+        }
+    });
+
+    interceptFile.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) processInterceptFile(file);
+    });
+
+    interceptClear.addEventListener('click', async () => {
+        await chrome.storage.local.remove(['interceptImageData']);
+        interceptPreview.style.display = 'none';
+        interceptClear.style.display = 'none';
+        interceptDropZone.classList.remove('loaded');
+        interceptDropText.textContent = 'Click or drag image here';
+        interceptStatus.textContent = 'Cleared — camera photos will not be replaced';
+        interceptStatus.className = 'status';
+
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab) {
+            chrome.tabs.sendMessage(tab.id, { action: 'clearIntercept' }).catch(() => {});
+        }
+    });
+
+    function processInterceptFile(file) {
+        interceptStatus.textContent = 'Processing...';
+        interceptStatus.className = 'status';
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            const base64Data = evt.target.result;
+            const imageBlob = JSON.stringify({ image: base64Data });
+
+            await chrome.storage.local.set({ interceptImageData: imageBlob });
+            showInterceptLoaded(imageBlob);
+
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tab) {
+                chrome.tabs.sendMessage(tab.id, {
+                    action: 'setIntercept',
+                    imageData: imageBlob
+                }).catch(() => {});
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function showInterceptLoaded(imageBlob) {
+        try {
+            const parsed = JSON.parse(imageBlob);
+            interceptImage.src = parsed.image;
+            interceptPreview.style.display = 'block';
+        } catch (e) {
+            interceptPreview.style.display = 'none';
+        }
+        interceptClear.style.display = 'block';
+        interceptDropZone.classList.add('loaded');
+        interceptDropText.textContent = '✅ Image loaded — click to replace';
+        interceptStatus.textContent = 'Ready — this image will replace camera photos on submit';
+        interceptStatus.className = 'status active';
+    }
+
     function updateProxyUI(enabled, proxyData) {
         if (enabled && proxyData) {
             proxyStatus.textContent = '🔧 Configured — check IP banner to verify';
